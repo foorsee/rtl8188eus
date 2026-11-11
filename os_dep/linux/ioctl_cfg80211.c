@@ -4538,7 +4538,7 @@ static int rtw_cfg80211_add_monitor_if(_adapter *padapter, char *name,
 	mon_wdev->iftype = NL80211_IFTYPE_MONITOR;
 	mon_ndev->ieee80211_ptr = mon_wdev;
 
-	ret = register_netdevice(mon_ndev);
+	ret = rtw_register_netdevice_op(adapter_to_dvobj(padapter), mon_ndev);
 	if (ret)
 		goto out;
 
@@ -4589,6 +4589,7 @@ static int
 	struct dvobj_priv *dvobj = wiphy_to_dvobj(wiphy);
 
 	rtw_set_rtnl_lock_holder(dvobj, current);
+	dvobj->wiphy_op_holder = current;
 
 	RTW_INFO(FUNC_WIPHY_FMT" name:%s, type:%d\n", FUNC_WIPHY_ARG(wiphy), name, type);
 
@@ -4624,6 +4625,20 @@ static int
 			ret = -ENODEV;
 			break;
 		}
+#if defined(RTW_SINGLE_WIPHY) && defined(CONFIG_USB_HCI)
+		/*
+		 * The HW is left powered (bup=1) by the previous interface. Starting an AP
+		 * on that stale state breaks beacons/EAPOL after an AP restart; power it
+		 * down so the next netdev_open() does the same full init as the very
+		 * first start.
+		 */
+		if (padapter->bup == _TRUE) {
+			rtw_set_drv_stopped(padapter);
+			rtw_dev_unload(padapter);
+			rtw_usb_hw_reset(dvobj);
+			rtw_reset_drv_sw(padapter);
+		}
+#endif
 		#if defined(CONFIG_P2P) && ((LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37)) || defined(COMPAT_KERNEL_RELEASE))
 		if (type == NL80211_IFTYPE_P2P_CLIENT || type == NL80211_IFTYPE_P2P_GO)
 			rtw_p2p_enable(padapter, P2P_ROLE_DEVICE);
@@ -4652,6 +4667,7 @@ static int
 	else
 		RTW_INFO(FUNC_WIPHY_FMT" wdev:%p, ret:%d\n", FUNC_WIPHY_ARG(wiphy), wdev, ret);
 
+	dvobj->wiphy_op_holder = NULL;
 	rtw_set_rtnl_lock_holder(dvobj, NULL);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0))
@@ -4680,13 +4696,14 @@ static int cfg80211_rtw_del_virtual_intf(struct wiphy *wiphy,
 	struct rtw_wdev_priv *pwdev_priv;
 
 	rtw_set_rtnl_lock_holder(dvobj, current);
+	dvobj->wiphy_op_holder = current;
 
 	if (ndev) {
 		adapter = (_adapter *)rtw_netdev_priv(ndev);
 		pwdev_priv = adapter_wdev_data(adapter);
 
 		if (ndev == pwdev_priv->pmon_ndev) {
-			unregister_netdevice(ndev);
+			rtw_unregister_netdevice_op(dvobj, ndev);
 			pwdev_priv->pmon_ndev = NULL;
 			pwdev_priv->ifname_mon[0] = '\0';
 			RTW_INFO(FUNC_NDEV_FMT" remove monitor ndev\n", FUNC_NDEV_ARG(ndev));
@@ -4711,6 +4728,7 @@ static int cfg80211_rtw_del_virtual_intf(struct wiphy *wiphy,
 	}
 
 exit:
+	dvobj->wiphy_op_holder = NULL;
 	rtw_set_rtnl_lock_holder(dvobj, NULL);
 	return ret;
 }

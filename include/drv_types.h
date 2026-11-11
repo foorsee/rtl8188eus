@@ -1027,6 +1027,7 @@ struct dvobj_priv {
 
 #ifdef PLATFORM_LINUX
 	_thread_hdl_ rtnl_lock_holder;
+	_thread_hdl_ wiphy_op_holder; /* task inside a cfg80211 op (wiphy mutex held) */
 
 	#if defined(CONFIG_IOCTL_CFG80211) && defined(RTW_SINGLE_WIPHY)
 	struct wiphy *wiphy;

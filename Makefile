@@ -74,6 +74,8 @@ CONFIG_WIFI_MONITOR = y
 CONFIG_MCC_MODE = n
 CONFIG_APPEND_VENDOR_IE_ENABLE = n
 CONFIG_RTW_NAPI = y
+# netifd/hostapd (OpenWrt) friendly AP mode: single wiphy, dynamic netdevs
+CONFIG_RTW_NETIFD_AP = n
 CONFIG_RTW_GRO = y
 CONFIG_RTW_NETIF_SG = y
 CONFIG_RTW_IPCAM_APPLICATION = n
@@ -982,6 +984,10 @@ endif
 
 ifeq ($(CONFIG_MCC_MODE), y)
 EXTRA_CFLAGS += -DCONFIG_MCC_MODE
+endif
+
+ifeq ($(CONFIG_RTW_NETIFD_AP), y)
+EXTRA_CFLAGS += -DRTW_P2P_GROUP_INTERFACE=1
 endif
 
 ifeq ($(CONFIG_RTW_NAPI), y)

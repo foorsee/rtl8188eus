@@ -133,6 +133,11 @@ void rtw_inetaddr_notifier_unregister(void);
 
 u8 rtw_rtnl_lock_needed(struct dvobj_priv *dvobj);
 void rtw_set_rtnl_lock_holder(struct dvobj_priv *dvobj, _thread_hdl_ thd_hdl);
+#ifdef CONFIG_USB_HCI
+int rtw_usb_hw_reset(struct dvobj_priv *dvobj);
+#endif
+int rtw_register_netdevice_op(struct dvobj_priv *dvobj, struct net_device *ndev);
+void rtw_unregister_netdevice_op(struct dvobj_priv *dvobj, struct net_device *ndev);
 
 #endif /* PLATFORM_LINUX */
 

@@ -286,6 +286,33 @@ static struct specific_device_id specific_device_id_tbl[] = {
 	{}
 };
 
+/*
+ * No-op pre/post_reset: with these the USB core keeps our interface bound across
+ * usb_reset_device() instead of unbinding/re-probing the whole driver.
+ */
+static int rtw_usb_pre_reset(struct usb_interface *intf) { return 0; }
+static int rtw_usb_post_reset(struct usb_interface *intf) { return 0; }
+
+/*
+ * Hard-reset the USB device (port reset) to get the chip into the same clean
+ * state as after a fresh probe. Needed before restarting an AP: re-running only
+ * the HAL init leaves the chip unable to send beacons / pass EAPOL.
+ */
+int rtw_usb_hw_reset(struct dvobj_priv *dvobj)
+{
+	struct usb_device *udev = dvobj->pusbdev;
+	struct usb_interface *intf = dvobj->pusbintf;
+	int locked, ret;
+
+	locked = usb_lock_device_for_reset(udev, intf);
+	if (locked < 0)
+		return locked;
+	ret = usb_reset_device(udev);
+	if (locked == 0)
+		usb_unlock_device(udev);
+	return ret;
+}
+
 struct rtw_usb_drv {
 	struct usb_driver usbdrv;
 	int drv_registered;
@@ -296,6 +323,8 @@ struct rtw_usb_drv usb_drv = {
 	.usbdrv.name = (char *)DRV_NAME,
 	.usbdrv.probe = rtw_drv_init,
 	.usbdrv.disconnect = rtw_dev_remove,
+	.usbdrv.pre_reset = rtw_usb_pre_reset,
+	.usbdrv.post_reset = rtw_usb_post_reset,
 	.usbdrv.id_table = rtw_usb_id_tbl,
 	.usbdrv.suspend =  rtw_suspend,
 	.usbdrv.resume = rtw_resume,

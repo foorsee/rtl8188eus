@@ -1610,6 +1610,34 @@ void rtw_os_ndev_free(_adapter *adapter)
 	}
 }
 
+/*
+ * Since kernel 5.12 cfg80211 takes the wiphy mutex from its netdev notifier
+ * on NETDEV_REGISTER/UNREGISTER unless the wdev is registered through
+ * cfg80211_register_netdevice()/cfg80211_unregister_wdev().  When we are
+ * called from a cfg80211 op (add/del_virtual_intf) the mutex is already held,
+ * so plain register_netdevice() deadlocks.
+ */
+int rtw_register_netdevice_op(struct dvobj_priv *dvobj, struct net_device *ndev)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0))
+	if (dvobj->wiphy_op_holder == current && ndev->ieee80211_ptr)
+		return cfg80211_register_netdevice(ndev);
+#endif
+	return register_netdevice(ndev);
+}
+
+void rtw_unregister_netdevice_op(struct dvobj_priv *dvobj, struct net_device *ndev)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0))
+	if (dvobj->wiphy_op_holder == current && ndev->ieee80211_ptr
+	    && ndev->ieee80211_ptr->registered) {
+		cfg80211_unregister_wdev(ndev->ieee80211_ptr);
+		return;
+	}
+#endif
+	unregister_netdevice(ndev);
+}
+
 int rtw_os_ndev_register(_adapter *adapter, const char *name)
 {
 	struct dvobj_priv *dvobj = adapter_to_dvobj(adapter);
@@ -1650,7 +1678,7 @@ int rtw_os_ndev_register(_adapter *adapter, const char *name)
 	if (rtnl_lock_needed)
 		ret = (register_netdev(ndev) == 0) ? _SUCCESS : _FAIL;
 	else
-		ret = (register_netdevice(ndev) == 0) ? _SUCCESS : _FAIL;
+		ret = (rtw_register_netdevice_op(dvobj, ndev) == 0) ? _SUCCESS : _FAIL;
 
 	if (ret == _SUCCESS)
 		adapter->registered = 1;
@@ -1697,7 +1725,7 @@ void rtw_os_ndev_unregister(_adapter *adapter)
 		if (rtnl_lock_needed)
 			unregister_netdev(netdev);
 		else
-			unregister_netdevice(netdev);
+			rtw_unregister_netdevice_op(dvobj, netdev);
 	}
 
 #if defined(CONFIG_IOCTL_CFG80211) && !defined(RTW_SINGLE_WIPHY)
@@ -1730,6 +1758,7 @@ void rtw_os_ndev_unregister(_adapter *adapter)
 int rtw_os_ndev_init(_adapter *adapter, const char *name)
 {
 	int ret = _FAIL;
+
 
 	if (rtw_os_ndev_alloc(adapter) != _SUCCESS)
 		goto exit;
